@@ -9,8 +9,18 @@
 #include <commdlg.h>
 
 
-#define MAX_LOADSTRING 100
+#include    <windows.h>
+#include    <mmsystem.h>
+#pragma     comment(lib,"winmm.lib")
+#define     SAFE_DELETE(p)  { if (p) { delete (p); (p)=NULL; } }
+#define     SAFE_DELDC(p)   { if (p) { DeleteDC (p);   (p)=NULL; } }
+#define     SAFE_DELOBJ(p)  { if (p) { DeleteObject(p); (p)=NULL; } }
 
+HBITMAP     hBackBitmap=NULL;   //Back Buffer HBitMap
+HDC         hdcMem=NULL;
+HDC         hdcMem2=NULL;
+
+#define MAX_LOADSTRING 100
 
 
 // グローバル変数 :
@@ -29,7 +39,10 @@ BITMAPINFOHEADER	bmpInfoHeader;
 HMENU				hMenuCB;
 HWND				hwndMain;
 HBITMAP				hBitmap=NULL, hBmpOld;
-HBITMAP				hBitmapRot;
+HBITMAP				hBitmapRot=NULL;
+
+int                 first_rotate = TRUE;
+
 
 // このコード モジュールに含まれる関数の宣言を転送します :
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -38,6 +51,10 @@ LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 // 以下自作関数の宣言
 BOOL				CallOpenDialog( HWND, LPOPENFILENAME, LPTSTR );
+void  CreateBuf(HWND hWnd);
+void  Render(void);
+
+
 
 int APIENTRY _tWinMain(HINSTANCE hInstance,
                      HINSTANCE hPrevInstance,
@@ -156,11 +173,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	PAINTSTRUCT ps;
 	HDC hdc;
 	static OPENFILENAME	Ofn;
-	static bOpenFile = FALSE;
-	static bDragging = FALSE;
+	static int bOpenFile = FALSE;
+	static int bDragging = FALSE;
 
 	switch (message) 
 	{
+	case WM_CREATE:
+		CreateBuf(hWnd);
+		break;
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam); 
 		wmEvent = HIWORD(wParam); 
@@ -188,13 +208,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					break;
 				}
 
+				if( bOpenFile == TRUE )
+				{
+					SAFE_DELOBJ(cbo.hBitmap);
+					SAFE_DELOBJ(hBitmapRot);
+				}
+				first_rotate = TRUE;
 				bOpenFile = TRUE;
 
 				wsprintf(szFileName, _T("%s"), Ofn.lpstrFile);
 				cbo.LoadBitmapFromFile(szFileName);
 
+				hBmpOld = (HBITMAP)SelectObject( hdcMem, cbo.hBitmap );
+
 				GetClientRect(hWnd, &rt);
-				InvalidateRect(hWnd, &rt, TRUE);
+				InvalidateRect(hWnd, &rt, FALSE);
 
 			}
 		default:
@@ -208,21 +236,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			break;
 		}
+
 		if(cbo.hBitmap != NULL)
 		{
-			HDC hdcMem;
 			BITMAP bm;
+			BOOL ret;
+			RECT rt;
 
-			hdcMem = CreateCompatibleDC(hdc);
-
-			hBmpOld = (HBITMAP)SelectObject( hdcMem, cbo.hBitmap );
+			GetClientRect(hWnd, &rt);
 			GetObject(cbo.hBitmap, sizeof(BITMAP), &bm);
 
-			BitBlt (hdc, topleftPoint.x, topleftPoint.y, bm.bmWidth, bm.bmHeight, hdcMem,  0, 0, SRCCOPY);
-			SelectObject( hdcMem, hBmpOld );
+			hBmpOld = (HBITMAP)SelectObject( hdcMem, cbo.hBitmap );
 
-			DeleteDC(hdcMem);
+			ret = FillRect(hdcMem2,&rt,(HBRUSH)GetStockObject(WHITE_BRUSH));
+			ret = BitBlt (hdcMem2, topleftPoint.x, topleftPoint.y, bm.bmWidth, bm.bmHeight, hdcMem,  0, 0, SRCCOPY);
+			ret = BitBlt (hdc, 0, 0, rt.right, rt.bottom, hdcMem2,  0, 0, SRCCOPY);
+
+			SelectObject( hdcMem, hBmpOld );
 		}
+
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_LBUTTONDOWN:
@@ -243,9 +275,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			int x,y;
 			HBITMAP swapbuf;
 			static HDC hdcBuffer;
-			static first=1;
 
-			if(first==1)
+			if(first_rotate==TRUE)
 			{
 				GetObject(cbo.hBitmap, sizeof(BITMAP), &bm);
 				lp = (LPBYTE)bm.bmBits; // lpはビットイメージの先頭を指すことになる
@@ -294,7 +325,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				DeleteDC(hdcBuffer);
 				ReleaseDC(hWnd, hdc);
 
-				first=0;
+				first_rotate = FALSE;
 			}
 
 			swapbuf = cbo.hBitmap;
@@ -302,21 +333,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			hBitmapRot = swapbuf;
 
 			GetClientRect(hWnd, &rt);
-			InvalidateRect(hWnd, &rt, TRUE);
+			InvalidateRect(hWnd, &rt, FALSE);
 		}
 		break;
 	case WM_MOUSEMOVE:
 		if( bDragging )
 		{
-			Point.x = LOWORD(lParam);
-			Point.y = HIWORD(lParam);
+#if 1
+			if(cbo.hBitmap != NULL)
+			{
+				Point.x = LOWORD(lParam);
+				Point.y = HIWORD(lParam);
 
-			topleftPoint.x += Point.x - prevPoint.x;
-			topleftPoint.y += Point.y - prevPoint.y;
-			if(cbo.hBitmap != NULL){
-				RECT rt;
+				topleftPoint.x += Point.x - prevPoint.x;
+				topleftPoint.y += Point.y - prevPoint.y;
 
-				GetClientRect(hWnd, &rt);
 #if 0
 				{
 					HDC hdc;
@@ -327,18 +358,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					ReleaseDC(hWnd, hdc);
 				}
 #endif
-				InvalidateRect(hWnd, &rt, FALSE);
+				{
+					RECT rt;
+
+					GetClientRect(hWnd, &rt);
+					InvalidateRect(hWnd, &rt, FALSE);
+				}
 
 			}
-
+#endif
 			prevPoint.x = Point.x;
 			prevPoint.y = Point.y;
 		}
 		break;
+#if 0
+	case WM_ERASEBKGND:
+		return TRUE;
+#endif
 	case WM_DESTROY:
-		if( cbo.hBitmap != NULL ){
-			DeleteObject(cbo.hBitmap);
-		}
+		SAFE_DELOBJ(cbo.hBitmap);
+		SAFE_DELOBJ(hBitmapRot);
+		SAFE_DELOBJ(hBackBitmap);
+
+		SAFE_DELDC(hdcMem);
+		SAFE_DELDC(hdcMem2);
 
 		PostQuitMessage(0);
 		break;
@@ -346,6 +389,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	return 0;
+}
+
+// デバイスコンテキストのバッファ作成と関連付け
+void  CreateBuf(HWND hWnd)
+{
+	HDC     hdc;
+	RECT rt;
+
+	GetClientRect(hWnd, &rt);
+
+	hdc         = GetDC(hWnd);
+	hdcMem      = CreateCompatibleDC(hdc);
+	hdcMem2     = CreateCompatibleDC(hdcMem);
+	hBackBitmap = CreateCompatibleBitmap(hdc, rt.right, rt.bottom);
+	SelectObject( hdcMem2, hBackBitmap );
 }
 
 // バージョン情報ボックスのメッセージ ハンドラです。
@@ -368,7 +426,7 @@ LRESULT CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 //---------------------------------------------------------------------------------------------
-//	「名前を付けて保存」ダイアログ
+//	「Open...」ダイアログ
 //---------------------------------------------------------------------------------------------
 BOOL CallOpenDialog( HWND hWnd, LPOPENFILENAME lpOfn, LPTSTR szInitialDir )
 {

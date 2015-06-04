@@ -1,21 +1,19 @@
-Microsoft Visual Studio Solution File, Format Version 8.00
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BmpViewerSDI", "BmpViewerSDI.vcproj", "{20AFB909-1557-4B0B-B933-5EE11D60B243}"
-	ProjectSection(ProjectDependencies) = postProject
-	EndProjectSection
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C++ Express 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BmpViewerSDI", "BmpViewerSDI.vcxproj", "{20AFB909-1557-4B0B-B933-5EE11D60B243}"
 EndProject
 Global
-	GlobalSection(SolutionConfiguration) = preSolution
-		Debug = Debug
-		Release = Release
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
 	EndGlobalSection
-	GlobalSection(ProjectConfiguration) = postSolution
-		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Debug.ActiveCfg = Debug|Win32
-		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Debug.Build.0 = Debug|Win32
-		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Release.ActiveCfg = Release|Win32
-		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Release.Build.0 = Release|Win32
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Debug|Win32.ActiveCfg = Debug|Win32
+		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Debug|Win32.Build.0 = Debug|Win32
+		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Release|Win32.ActiveCfg = Release|Win32
+		{20AFB909-1557-4B0B-B933-5EE11D60B243}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-	EndGlobalSection
-	GlobalSection(ExtensibilityAddIns) = postSolution
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
