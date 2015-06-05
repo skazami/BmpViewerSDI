@@ -268,62 +268,124 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_RBUTTONUP:
 		if(cbo.hBitmap != NULL)
 		{
-			LPBYTE lp, lp_;
-			BITMAP bm;
+			LPBYTE lpSrc, lpDst;
+			LPVOID lp_void;
+			BITMAP bmSrc, bmDst;
 			RECT rt;
-			int origWidth, origHeight;
 			int x,y;
 			HBITMAP swapbuf;
-			static HDC hdcBuffer;
+			HDC hdc;
+
+			int i;
+			HANDLE hMem;
+			LPBITMAPINFO lpBmi;
+
+			hdc = GetDC(hWnd);
+
+			int srcBitPos, srcBitBytePos, srcBitByteBitPos;
+			int dstBitPos, dstBitBytePos, dstBitByteBitPos;
+			int srcBit;
+			LPBYTE writeBytePtr;
 
 			if(first_rotate==TRUE)
 			{
-				GetObject(cbo.hBitmap, sizeof(BITMAP), &bm);
-				lp = (LPBYTE)bm.bmBits; // lpはビットイメージの先頭を指すことになる
-
-				hdc = GetDC(hWnd);
+				GetObject(cbo.hBitmap, sizeof(BITMAP), &bmSrc);
+				lpSrc = (LPBYTE)bmSrc.bmBits; // lpはビットイメージの先頭を指す
 
 				// 左90度回転した画像用のBITMAP生成
 				{
 					BITMAPINFOHEADER bmiHeader;
-					LPVOID           lp;
 					BITMAPINFO       bmi;
+
+					hMem = GlobalAlloc(GHND, sizeof(BITMAPINFOHEADER)+(sizeof(RGBQUAD)*(1<<bmSrc.bmBitsPixel)));
+					lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
 
 					ZeroMemory(&bmiHeader, sizeof(BITMAPINFOHEADER));
 					bmiHeader.biSize      = sizeof(BITMAPINFOHEADER);
-					bmiHeader.biWidth     = bm.bmHeight;  // 縦横入れ替え
-					bmiHeader.biHeight    = bm.bmWidth;   // 縦横入れ替え
-					bmiHeader.biPlanes    = bm.bmPlanes;
-					bmiHeader.biBitCount  = bm.bmBitsPixel;
+					bmiHeader.biWidth     = bmSrc.bmHeight;  // 縦横入れ替え
+					bmiHeader.biHeight    = bmSrc.bmWidth;   // 縦横入れ替え
+					bmiHeader.biPlanes    = bmSrc.bmPlanes;
+					bmiHeader.biBitCount  = bmSrc.bmBitsPixel;
 
+
+#if 1
+					lpBmi->bmiHeader = bmiHeader;
+					lpBmi->bmiColors[0].rgbBlue  = 0x00;
+					lpBmi->bmiColors[0].rgbGreen = 0x00;
+					lpBmi->bmiColors[0].rgbRed   = 0x00;
+					lpBmi->bmiColors[1].rgbBlue  = 0xFF;
+					lpBmi->bmiColors[1].rgbGreen = 0xFF;
+					lpBmi->bmiColors[1].rgbRed   = 0xFF;
+
+#else
 					bmi.bmiHeader = bmiHeader;
-					lp = (LPBYTE)bm.bmBits;
+					bmi.bmiColors[0].rgbBlue  = 0x00;
+					bmi.bmiColors[0].rgbGreen = 0x00;
+					bmi.bmiColors[0].rgbRed   = 0x00;
+					bmi.bmiColors[1].rgbBlue  = 0xFF;
+					bmi.bmiColors[1].rgbGreen = 0xFF;
+					bmi.bmiColors[1].rgbRed   = 0xFF;
+#endif
 
-					hBitmapRot = CreateDIBSection(NULL, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp, NULL, 0);
+//					hBitmapRot = CreateDIBSection(hdc, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
+					hBitmapRot = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
+//					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
+//					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_PAL_COLORS, &lp_void, NULL, 0);
+
+					GlobalUnlock(lpBmi);
+					GlobalFree(hMem);
 				}
-				hdcBuffer = CreateCompatibleDC(hdc);
 
-				GetObject(cbo.hBitmap, sizeof(BITMAP), &bm);
-				origWidth  = bm.bmWidth;
-				origHeight = bm.bmHeight;
+				GetObject(hBitmapRot, sizeof(BITMAP), &bmDst);
+				lpDst = (LPBYTE)lp_void;
 
-				GetObject(hBitmapRot, sizeof(BITMAP), &bm);
-				lp_ = (LPBYTE)bm.bmBits;
-				for(y=0;y<origHeight;y++)
+
+				switch ( bmDst.bmBitsPixel )
 				{
-					for(x=0;x<origWidth;x++)
+				case 1:
+					ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
+					
+					//memset(lpDst, 0x00, bmDst.bmWidthBytes*bmDst.bmHeight);
+					for(y=0;y<bmSrc.bmHeight;y++)
 					{
-						// 左90度変換式（24bitカラー決め打ち）
-						memcpy(lp_+((origHeight*x + origHeight-1-y)*3),lp+((origWidth*y+x)*3),3);
+						for(x=0;x<bmSrc.bmWidth;x++)
+						{
+#if 1
+							srcBitPos        = bmSrc.bmWidthBytes*8*y+x;
+							srcBitBytePos    = srcBitPos / 8;
+							srcBitByteBitPos = 7-(srcBitPos % 8);
+							srcBit = ( (*(lpSrc+srcBitBytePos)) >> srcBitByteBitPos ) & 0x1;
+
+							dstBitPos        = bmDst.bmWidthBytes*8*x + bmDst.bmWidth-1-y;
+							dstBitBytePos    = dstBitPos / 8;
+							dstBitByteBitPos = 7-(dstBitPos % 8);
+
+							writeBytePtr = lpDst + dstBitBytePos;
+
+							*writeBytePtr |= srcBit <<dstBitByteBitPos;
+#endif
+						}
 					}
+					break;
+
+				case 4:
+				case 8:
+					break;
+
+				case 24:
+				case 32:
+					for(y=0;y<bmSrc.bmHeight;y++)
+					{
+						for(x=0;x<bmSrc.bmWidth;x++)
+						{
+							// 左90度変換式（24bitカラー決め打ち）
+							memcpy(lpDst+((bmSrc.bmHeight *x + bmSrc.bmHeight-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
+						}
+					}
+					break;
+				default:
+					break;
 				}
-
-				SelectObject(hdcBuffer, hBitmapRot);
-
-				GetClientRect(hWnd, &rt);
-
-				DeleteDC(hdcBuffer);
-				ReleaseDC(hWnd, hdc);
 
 				first_rotate = FALSE;
 			}
@@ -331,6 +393,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			swapbuf = cbo.hBitmap;
 			cbo.hBitmap = hBitmapRot;
 			hBitmapRot = swapbuf;
+
+			ReleaseDC(hWnd, hdc);
 
 			GetClientRect(hWnd, &rt);
 			InvalidateRect(hWnd, &rt, FALSE);
@@ -375,6 +439,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_ERASEBKGND:
 		return TRUE;
 #endif
+	case WM_SIZE:
+		SAFE_DELOBJ(hBackBitmap);
+		SAFE_DELDC(hdcMem2);
+
+		{
+			HDC     hdc;
+			RECT rt;
+
+			GetClientRect(hWnd, &rt);
+
+			hdc         = GetDC(hWnd);
+			hdcMem2     = CreateCompatibleDC(hdc);
+			hBackBitmap = CreateCompatibleBitmap(hdc, rt.right, rt.bottom);
+			SelectObject( hdcMem2, hBackBitmap );
+
+			ReleaseDC(hWnd, hdc);
+		}
+		break;
 	case WM_DESTROY:
 		SAFE_DELOBJ(cbo.hBitmap);
 		SAFE_DELOBJ(hBitmapRot);
@@ -401,9 +483,11 @@ void  CreateBuf(HWND hWnd)
 
 	hdc         = GetDC(hWnd);
 	hdcMem      = CreateCompatibleDC(hdc);
-	hdcMem2     = CreateCompatibleDC(hdcMem);
+	hdcMem2     = CreateCompatibleDC(hdc);
 	hBackBitmap = CreateCompatibleBitmap(hdc, rt.right, rt.bottom);
 	SelectObject( hdcMem2, hBackBitmap );
+
+	ReleaseDC(hWnd, hdc);
 }
 
 // バージョン情報ボックスのメッセージ ハンドラです。

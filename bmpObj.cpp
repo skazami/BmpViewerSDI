@@ -117,10 +117,7 @@ RETURN:
 void CBmpObj::LoadBitmapFromFile( LPTSTR szFileName )
 {
 	HANDLE	hFile=NULL;
-	DWORD	readbytes;
 	PBYTE	frameBuffer=NULL;
-	DWORD	rowbytes;
-	int		i;
 
 	if( hBitmap != NULL ){
 		DeleteObject(hBitmap);
@@ -129,6 +126,10 @@ void CBmpObj::LoadBitmapFromFile( LPTSTR szFileName )
 #if 1
 	hBitmap = (HBITMAP)LoadImage(hInst, szFileName, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION|LR_LOADFROMFILE);
 #else
+	int		i;
+	DWORD	readbytes;
+	DWORD	rowbytes;
+
 	//ビットマップをファイルから読み出し
 	if ( (hFile = CreateFile( szFileName, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0 )) == INVALID_HANDLE_VALUE ){
 		return;
