@@ -9,16 +9,17 @@
 //--------------------------------------------------------------------------------
 CBmpObj::CBmpObj()
 {
-	hBitmap=NULL;
+	hBitmap     = NULL;
+	hPalette    = NULL;
+	lpRgbQuad   = NULL;
+	hMemRgbQuad = NULL;
 }
 
 //--------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------
 CBmpObj::~CBmpObj()
 {
-	if(hBitmap != NULL){
-		DeleteObject(hBitmap);
-	}
+	this->ReleaseBitmap();
 }
 
 //--------------------------------------------------------------------------------
@@ -85,7 +86,8 @@ void CBmpObj::DesktopToFile( void )
 		goto RETURN;
 #endif
 
-	wsprintf(BmpFN, _T("\\My Documents\\bitmap01.bmp"));
+//	wsprintf(BmpFN, _T("\\My Documents\\bitmap01.bmp"));
+	wsprintf(BmpFN, _T("F:\\work\\Program\\Prog\\BmpViewerSDI\\bitmap01.bmp"));
 
 	//ビットマップファイルに保存
 	if ( (hFile = CreateFile( BmpFN, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0 )) == INVALID_HANDLE_VALUE ){
@@ -119,12 +121,12 @@ void CBmpObj::LoadBitmapFromFile( LPTSTR szFileName )
 	HANDLE	hFile=NULL;
 	PBYTE	frameBuffer=NULL;
 
-	if( hBitmap != NULL ){
-		DeleteObject(hBitmap);
-	}
+	this->ReleaseBitmap();
 
 #if 1
 	hBitmap = (HBITMAP)LoadImage(hInst, szFileName, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION|LR_LOADFROMFILE);
+	ReadHeader(szFileName);
+	SetPalette();
 #else
 	int		i;
 	DWORD	readbytes;
@@ -174,6 +176,127 @@ RETURN:
 	LocalFree(frameBuffer);
 #endif
 	return;
+}
+
+//--------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+int CBmpObj::ReadHeader(LPTSTR szFileName)
+{
+	int ret=0;
+    HANDLE hFile = NULL;
+    DWORD dwResult;
+    LPBITMAPFILEHEADER lpBfh;
+    LPBITMAPINFOHEADER lpBih;
+
+    hFile = CreateFile(szFileName, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        ret = -1;
+		goto RETURN;
+    }
+
+	lpBfh = (LPBITMAPFILEHEADER)(&this->bmpFileHeader);
+    ReadFile(hFile, (LPBITMAPFILEHEADER)lpBfh, sizeof(BITMAPFILEHEADER), &dwResult, NULL);
+
+	if ( !(LOBYTE(lpBfh->bfType) == 'B' && HIBYTE(lpBfh->bfType) == 'M') ) {
+        ret= -2;
+		goto RETURN;
+    }
+
+	lpBih = (LPBITMAPINFOHEADER)(&this->bmpInfoHeader);
+    ReadFile(hFile, (LPBITMAPINFOHEADER)lpBih, sizeof(BITMAPINFOHEADER), &dwResult, NULL);
+
+	if( lpBih->biSize != 40 ) // Windows Bitmapのみ対応
+	{
+        ret= -3;
+		goto RETURN;
+	}
+
+    // RGBQUADデータ用バッファ確保＆読み込み
+	hMemRgbQuad = GlobalAlloc(GMEM_FIXED, lpBih->biClrUsed * sizeof(RGBQUAD));
+	lpRgbQuad = (LPRGBQUAD)GlobalLock(hMemRgbQuad);
+
+	SetFilePointer(hFile, sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER), 0, FILE_BEGIN);
+    ReadFile(hFile, lpRgbQuad, lpBih->biClrUsed * sizeof(RGBQUAD), &dwResult, NULL);
+
+RETURN:
+	if( hFile != NULL )
+	{
+	    CloseHandle(hFile);
+	}
+    return ret;
+}
+
+
+
+//--------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+HPALETTE CBmpObj::SetPalette(void)
+{
+    LPBITMAPINFOHEADER lpBih;
+    LPLOGPALETTE lpPal;
+    LPRGBQUAD lpRGB;
+    HANDLE hPal;
+    WORD i;
+
+	if( hBitmap == NULL )
+	{
+		return NULL;
+	}
+
+	lpBih = &this->bmpInfoHeader;
+
+	if( lpBih->biClrUsed == 0 || lpBih->biBitCount > 8 )
+	{
+		return NULL;
+	}
+
+    hPal = GlobalAlloc(GMEM_FIXED, sizeof(LOGPALETTE) + lpBih->biClrUsed * sizeof(PALETTEENTRY));
+    lpPal = (LPLOGPALETTE)GlobalLock(hPal);
+
+    lpPal->palVersion = 0x300;
+    lpPal->palNumEntries = (WORD)lpBih->biClrUsed;
+
+    lpRGB = this->lpRgbQuad;
+
+    for (i = 0; i < lpBih->biClrUsed; i++, lpRGB++) { // 構造体内の色の並び順が異なるため、単なるコピーではNG、、、
+        lpPal->palPalEntry[i].peRed   = lpRGB->rgbRed;
+        lpPal->palPalEntry[i].peGreen = lpRGB->rgbGreen;
+        lpPal->palPalEntry[i].peBlue  = lpRGB->rgbBlue;
+        lpPal->palPalEntry[i].peFlags = 0;
+    }
+
+    GlobalUnlock(hPal);
+    hPalette = CreatePalette(lpPal);
+    if (hPalette == NULL) {
+        return NULL;
+    }
+    GlobalFree(hPal);
+
+    return hPalette;
+}
+
+//--------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+int CBmpObj::ReleaseBitmap( void )
+{
+	if( hBitmap != NULL ){
+		DeleteObject(hBitmap);
+		hBitmap = NULL;
+	}
+
+	if(hPalette != NULL){
+		DeleteObject(hPalette);
+		hPalette = NULL;
+	}
+
+	if( hMemRgbQuad != NULL )
+	{
+	    GlobalUnlock(hMemRgbQuad);
+		GlobalFree(hMemRgbQuad);
+		hMemRgbQuad = NULL;
+	}
+
+	return 0;
 }
 
 //--------------------------------------------------------------------------------

@@ -9,16 +9,8 @@
 #include <commdlg.h>
 
 
-#include    <windows.h>
-#include    <mmsystem.h>
-#pragma     comment(lib,"winmm.lib")
-#define     SAFE_DELETE(p)  { if (p) { delete (p); (p)=NULL; } }
-#define     SAFE_DELDC(p)   { if (p) { DeleteDC (p);   (p)=NULL; } }
-#define     SAFE_DELOBJ(p)  { if (p) { DeleteObject(p); (p)=NULL; } }
-
-HBITMAP     hBackBitmap=NULL;   //Back Buffer HBitMap
-HDC         hdcMem=NULL;
-HDC         hdcMem2=NULL;
+#define     DELDC(p)   { if (p) { DeleteDC (p);   (p)=NULL; } }
+#define     DELOBJ(p)  { if (p) { DeleteObject(p); (p)=NULL; } }
 
 #define MAX_LOADSTRING 100
 
@@ -31,15 +23,18 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// メイン ウィンドウ クラス名
 CBmpObj cbo;
 
 TCHAR				szFileName[MAX_PATH];
-POINT				prevPoint, Point;
-POINT				topleftPoint={0, 0};
-BITMAPFILEHEADER	bmpFileHeader;
-BITMAPINFOHEADER	bmpInfoHeader;
+POINTS				prevPoint, Point;
+POINTS				topleftPoint={0, 0};
 //DWORD				displayFlag=IDM_ORIGSIZE;
 HMENU				hMenuCB;
 HWND				hwndMain;
-HBITMAP				hBitmap=NULL, hBmpOld;
-HBITMAP				hBitmapRot=NULL;
+
+HBITMAP				hBitmap        = NULL;
+HBITMAP				hBitmapRot     = NULL;
+HBITMAP				hBitmapCurrent = NULL;
+HBITMAP             hBackBitmap    = NULL;
+HDC                 hdcMem         = NULL;
+HDC                 hdcMem2        = NULL;
 
 int                 first_rotate = TRUE;
 
@@ -112,7 +107,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 	wcex.cbSize = sizeof(WNDCLASSEX); 
 
-	wcex.style			= CS_HREDRAW | CS_VREDRAW;
+	wcex.style			= CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
 	wcex.lpfnWndProc	= (WNDPROC)WndProc;
 	wcex.cbClsExtra		= 0;
 	wcex.cbWndExtra		= 0;
@@ -198,8 +193,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				topleftPoint.x = 0;
 				topleftPoint.y = 0;
 
+				DELOBJ(hBitmapRot);
+				first_rotate = TRUE;
+				bOpenFile = TRUE;
+
+#if 1
 				TCHAR			szDefaultDir[MAX_PATH];
-				RECT rt;
 
 				wsprintf(szDefaultDir, _T("\\My Documents"));
 
@@ -208,21 +207,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					break;
 				}
 
-				if( bOpenFile == TRUE )
-				{
-					SAFE_DELOBJ(cbo.hBitmap);
-					SAFE_DELOBJ(hBitmapRot);
-				}
-				first_rotate = TRUE;
-				bOpenFile = TRUE;
-
 				wsprintf(szFileName, _T("%s"), Ofn.lpstrFile);
+#else
+				wsprintf(szFileName, _T("F:\\work\\Program\\Prog\\BmpViewerSDI\\3692796\.bmp"));
+#endif
+
 				cbo.LoadBitmapFromFile(szFileName);
 
-				hBmpOld = (HBITMAP)SelectObject( hdcMem, cbo.hBitmap );
+				if( cbo.GetBitmapHandle() != NULL )
+				{
+					SelectObject( hdcMem, cbo.GetBitmapHandle() );
+					hBitmapCurrent = cbo.GetBitmapHandle();
+				}
 
-				GetClientRect(hWnd, &rt);
-				InvalidateRect(hWnd, &rt, FALSE);
+				{
+					RECT rt;
+
+					GetClientRect(hWnd, &rt);
+					InvalidateRect(hWnd, &rt, FALSE);
+				}
 
 			}
 		default:
@@ -237,46 +240,43 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 
-		if(cbo.hBitmap != NULL)
+		if(hBitmapCurrent != NULL)
 		{
 			BITMAP bm;
 			BOOL ret;
 			RECT rt;
 
+			GetObject(hBitmapCurrent, sizeof(BITMAP), &bm);
+
 			GetClientRect(hWnd, &rt);
-			GetObject(cbo.hBitmap, sizeof(BITMAP), &bm);
 
-			hBmpOld = (HBITMAP)SelectObject( hdcMem, cbo.hBitmap );
-
+			// バッファ上で描画（背景は白固定）
 			ret = FillRect(hdcMem2,&rt,(HBRUSH)GetStockObject(WHITE_BRUSH));
 			ret = BitBlt (hdcMem2, topleftPoint.x, topleftPoint.y, bm.bmWidth, bm.bmHeight, hdcMem,  0, 0, SRCCOPY);
-			ret = BitBlt (hdc, 0, 0, rt.right, rt.bottom, hdcMem2,  0, 0, SRCCOPY);
 
-			SelectObject( hdcMem, hBmpOld );
+			// 転送
+			ret = BitBlt (hdc, 0, 0, rt.right, rt.bottom, hdcMem2,  0, 0, SRCCOPY);
 		}
 
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_LBUTTONDOWN:
-		prevPoint.x = LOWORD(lParam);
-		prevPoint.y = HIWORD(lParam);
+		prevPoint = MAKEPOINTS(lParam);
 		bDragging = TRUE;
 		break;
 	case WM_LBUTTONUP:
 		bDragging = FALSE;
 		break;
 	case WM_RBUTTONUP:
-		if(cbo.hBitmap != NULL)
+		if(cbo.GetBitmapHandle() != NULL)
 		{
-			LPBYTE lpSrc, lpDst;
 			LPVOID lp_void;
+			LPBYTE lpSrc, lpDst;
 			BITMAP bmSrc, bmDst;
 			RECT rt;
 			int x,y;
-			HBITMAP swapbuf;
 			HDC hdc;
 
-			int i;
 			HANDLE hMem;
 			LPBITMAPINFO lpBmi;
 
@@ -289,15 +289,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			if(first_rotate==TRUE)
 			{
-				GetObject(cbo.hBitmap, sizeof(BITMAP), &bmSrc);
+				GetObject(cbo.GetBitmapHandle(), sizeof(BITMAP), &bmSrc);
 				lpSrc = (LPBYTE)bmSrc.bmBits; // lpはビットイメージの先頭を指す
 
 				// 左90度回転した画像用のBITMAP生成
 				{
 					BITMAPINFOHEADER bmiHeader;
-					BITMAPINFO       bmi;
 
-					hMem = GlobalAlloc(GHND, sizeof(BITMAPINFOHEADER)+(sizeof(RGBQUAD)*(1<<bmSrc.bmBitsPixel)));
+					hMem = GlobalAlloc(GHND, sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
 					lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
 
 					ZeroMemory(&bmiHeader, sizeof(BITMAPINFOHEADER));
@@ -307,32 +306,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					bmiHeader.biPlanes    = bmSrc.bmPlanes;
 					bmiHeader.biBitCount  = bmSrc.bmBitsPixel;
 
-
-#if 1
-					lpBmi->bmiHeader = bmiHeader;
-					lpBmi->bmiColors[0].rgbBlue  = 0x00;
-					lpBmi->bmiColors[0].rgbGreen = 0x00;
-					lpBmi->bmiColors[0].rgbRed   = 0x00;
-					lpBmi->bmiColors[1].rgbBlue  = 0xFF;
-					lpBmi->bmiColors[1].rgbGreen = 0xFF;
-					lpBmi->bmiColors[1].rgbRed   = 0xFF;
-
-#else
-					bmi.bmiHeader = bmiHeader;
-					bmi.bmiColors[0].rgbBlue  = 0x00;
-					bmi.bmiColors[0].rgbGreen = 0x00;
-					bmi.bmiColors[0].rgbRed   = 0x00;
-					bmi.bmiColors[1].rgbBlue  = 0xFF;
-					bmi.bmiColors[1].rgbGreen = 0xFF;
-					bmi.bmiColors[1].rgbRed   = 0xFF;
+#if 0
+					if( cbo.hPalette != NULL )
+					{
+						SelectPalette(hdc, cbo.hPalette, FALSE);
+						RealizePalette(hdc);
+					}
 #endif
+
+					lpBmi->bmiHeader = bmiHeader;
+					memcpy(lpBmi->bmiColors, cbo.lpRgbQuad, sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
 
 //					hBitmapRot = CreateDIBSection(hdc, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 					hBitmapRot = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 //					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 //					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_PAL_COLORS, &lp_void, NULL, 0);
 
-					GlobalUnlock(lpBmi);
+					GlobalUnlock(hMem);
 					GlobalFree(hMem);
 				}
 
@@ -345,12 +335,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				case 1:
 					ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
 					
-					//memset(lpDst, 0x00, bmDst.bmWidthBytes*bmDst.bmHeight);
+					// 左90度回転変換
 					for(y=0;y<bmSrc.bmHeight;y++)
 					{
 						for(x=0;x<bmSrc.bmWidth;x++)
 						{
-#if 1
 							srcBitPos        = bmSrc.bmWidthBytes*8*y+x;
 							srcBitBytePos    = srcBitPos / 8;
 							srcBitByteBitPos = 7-(srcBitPos % 8);
@@ -363,7 +352,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							writeBytePtr = lpDst + dstBitBytePos;
 
 							*writeBytePtr |= srcBit <<dstBitByteBitPos;
-#endif
 						}
 					}
 					break;
@@ -378,7 +366,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					{
 						for(x=0;x<bmSrc.bmWidth;x++)
 						{
-							// 左90度変換式（24bitカラー決め打ち）
 							memcpy(lpDst+((bmSrc.bmHeight *x + bmSrc.bmHeight-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
 						}
 					}
@@ -390,9 +377,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				first_rotate = FALSE;
 			}
 
-			swapbuf = cbo.hBitmap;
-			cbo.hBitmap = hBitmapRot;
-			hBitmapRot = swapbuf;
+			hBitmapCurrent = (hBitmapCurrent == cbo.GetBitmapHandle())?hBitmapRot:cbo.GetBitmapHandle();
+			SelectObject( hdcMem, hBitmapCurrent );
 
 			ReleaseDC(hWnd, hdc);
 
@@ -404,10 +390,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if( bDragging )
 		{
 #if 1
-			if(cbo.hBitmap != NULL)
+			if(cbo.GetBitmapHandle() != NULL)
 			{
-				Point.x = LOWORD(lParam);
-				Point.y = HIWORD(lParam);
+				Point = MAKEPOINTS(lParam);
 
 				topleftPoint.x += Point.x - prevPoint.x;
 				topleftPoint.y += Point.y - prevPoint.y;
@@ -431,17 +416,32 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			}
 #endif
-			prevPoint.x = Point.x;
-			prevPoint.y = Point.y;
+
+			prevPoint = Point;
+//			prevPoint.x = Point.x;
+//			prevPoint.y = Point.y;
 		}
 		break;
+
+	case WM_LBUTTONDBLCLK:
+		topleftPoint = MAKEPOINTS(lParam);
+
+		{
+			RECT rt;
+
+			GetClientRect(hWnd, &rt);
+			InvalidateRect(hWnd, &rt, FALSE);
+		}
+		 
+		break;
+
 #if 0
 	case WM_ERASEBKGND:
 		return TRUE;
 #endif
 	case WM_SIZE:
-		SAFE_DELOBJ(hBackBitmap);
-		SAFE_DELDC(hdcMem2);
+		DELOBJ(hBackBitmap);
+		DELDC(hdcMem2);
 
 		{
 			HDC     hdc;
@@ -458,12 +458,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_DESTROY:
-		SAFE_DELOBJ(cbo.hBitmap);
-		SAFE_DELOBJ(hBitmapRot);
-		SAFE_DELOBJ(hBackBitmap);
+		DELOBJ(hBitmapRot);
+		DELOBJ(hBackBitmap);
 
-		SAFE_DELDC(hdcMem);
-		SAFE_DELDC(hdcMem2);
+		DELDC(hdcMem);
+		DELDC(hdcMem2);
 
 		PostQuitMessage(0);
 		break;
