@@ -21,6 +21,10 @@ TCHAR szTitle[MAX_LOADSTRING];					// タイトル バーのテキスト
 TCHAR szWindowClass[MAX_LOADSTRING];			// メイン ウィンドウ クラス名
 
 CBmpObj cbo;
+CBmpObj cboRot;
+
+CBmpObj cbmpObj[4];
+
 
 TCHAR				szFileName[MAX_PATH];
 POINTS				prevPoint, Point;
@@ -278,6 +282,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			HDC hdc;
 
 			HANDLE hMem;
+			DWORD  dwHeaderSize;
 			LPBITMAPINFO lpBmi;
 
 			hdc = GetDC(hWnd);
@@ -290,21 +295,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if(first_rotate==TRUE)
 			{
 				GetObject(cbo.GetBitmapHandle(), sizeof(BITMAP), &bmSrc);
-				lpSrc = (LPBYTE)bmSrc.bmBits; // lpはビットイメージの先頭を指す
+				lpSrc = (LPBYTE)bmSrc.bmBits;
 
 				// 左90度回転した画像用のBITMAP生成
 				{
-					BITMAPINFOHEADER bmiHeader;
-
-					hMem = GlobalAlloc(GHND, sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
+					dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed;
+					hMem = GlobalAlloc(GHND, dwHeaderSize);
 					lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
 
-					ZeroMemory(&bmiHeader, sizeof(BITMAPINFOHEADER));
-					bmiHeader.biSize      = sizeof(BITMAPINFOHEADER);
-					bmiHeader.biWidth     = bmSrc.bmHeight;  // 縦横入れ替え
-					bmiHeader.biHeight    = bmSrc.bmWidth;   // 縦横入れ替え
-					bmiHeader.biPlanes    = bmSrc.bmPlanes;
-					bmiHeader.biBitCount  = bmSrc.bmBitsPixel;
+					ZeroMemory(lpBmi, dwHeaderSize);
+
+					lpBmi->bmiHeader = cbo.GetBitmapInfoHeader();
+
+					// 縦横入れ替え
+					lpBmi->bmiHeader.biWidth     = bmSrc.bmHeight;
+					lpBmi->bmiHeader.biHeight    = bmSrc.bmWidth;
+
+					memcpy(lpBmi->bmiColors, cbo.GetRgbQuadData(), sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
 
 #if 0
 					if( cbo.hPalette != NULL )
@@ -314,11 +321,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					}
 #endif
 
-					lpBmi->bmiHeader = bmiHeader;
-					memcpy(lpBmi->bmiColors, cbo.lpRgbQuad, sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
+					cboRot.CreateBitmap(lpBmi, dwHeaderSize);
 
 //					hBitmapRot = CreateDIBSection(hdc, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
-					hBitmapRot = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
+//					hBitmapRot = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 //					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 //					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_PAL_COLORS, &lp_void, NULL, 0);
 
@@ -326,9 +332,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					GlobalFree(hMem);
 				}
 
-				GetObject(hBitmapRot, sizeof(BITMAP), &bmDst);
-				lpDst = (LPBYTE)lp_void;
-
+//				GetObject(hBitmapRot, sizeof(BITMAP), &bmDst);
+//				lpDst = (LPBYTE)lp_void;
+				GetObject(cboRot.GetBitmapHandle(), sizeof(BITMAP), &bmDst);
+				lpDst = (LPBYTE)bmDst.bmBits;
 
 				switch ( bmDst.bmBitsPixel )
 				{
@@ -351,7 +358,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 							writeBytePtr = lpDst + dstBitBytePos;
 
-							*writeBytePtr |= srcBit <<dstBitByteBitPos;
+							*writeBytePtr |= srcBit << dstBitByteBitPos;
 						}
 					}
 					break;
@@ -377,7 +384,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				first_rotate = FALSE;
 			}
 
-			hBitmapCurrent = (hBitmapCurrent == cbo.GetBitmapHandle())?hBitmapRot:cbo.GetBitmapHandle();
+			hBitmapCurrent = (hBitmapCurrent == cbo.GetBitmapHandle())?cboRot.GetBitmapHandle():cbo.GetBitmapHandle();
 			SelectObject( hdcMem, hBitmapCurrent );
 
 			ReleaseDC(hWnd, hdc);
@@ -418,8 +425,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 #endif
 
 			prevPoint = Point;
-//			prevPoint.x = Point.x;
-//			prevPoint.y = Point.y;
 		}
 		break;
 

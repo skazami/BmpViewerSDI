@@ -11,31 +11,23 @@ class CBmpObj
 private:
 
 	HBITMAP hBitmap;
+	HPALETTE hPalette;
 
-	DWORD SizeImage( BITMAPINFOHEADER );
-
-	DWORD dwFileSize;
-	DWORD dwOffBits;
-
-	HANDLE hMemRgbQuad;
+	HANDLE              hMemBmpInfo;
+	LPBITMAPINFO        lpBmpInfo;
+	BITMAPFILEHEADER	bmpFileHeader;
 
 	HPALETTE SetPalette( void );
 	int  ReadHeader( LPTSTR );
 
-	BITMAPFILEHEADER	bmpFileHeader;
-	BITMAPINFOHEADER	bmpInfoHeader;
-
 public:
-	HPALETTE hPalette;
-
-	LPRGBQUAD           lpRgbQuad;
 
 	CBmpObj();
 	virtual ~CBmpObj();
 
 	void DesktopToFile( void );
 	void LoadBitmapFromFile( LPTSTR );
-	void CreateBitmap( BITMAPFILEHEADER, BITMAPINFOHEADER );
+	void CreateBitmap( LPBITMAPINFO, DWORD ); // TODO implement this method
 
 	int ReleaseBitmap( void );
 
@@ -51,7 +43,22 @@ public:
 
 	BITMAPINFOHEADER GetBitmapInfoHeader(void)
 	{
-		return this->bmpInfoHeader;
+		BITMAPINFOHEADER bih;
+
+		if( this->lpBmpInfo != NULL )
+		{
+			bih = this->lpBmpInfo->bmiHeader;
+		}
+		else
+		{
+			ZeroMemory(&bih, sizeof(BITMAPINFOHEADER));
+		}
+		return bih;
+	}
+
+	LPRGBQUAD GetRgbQuadData(void)
+	{
+		return this->lpBmpInfo->bmiColors; // TODO （メモリ使用量的には不利になるが）できればコピーを渡したほうが良い。元のデータを保護するため。
 	}
 };
 

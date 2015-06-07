@@ -11,8 +11,8 @@ CBmpObj::CBmpObj()
 {
 	hBitmap     = NULL;
 	hPalette    = NULL;
-	lpRgbQuad   = NULL;
-	hMemRgbQuad = NULL;
+	lpBmpInfo   = NULL;
+	hMemBmpInfo = NULL;
 }
 
 //--------------------------------------------------------------------------------
@@ -178,6 +178,22 @@ RETURN:
 	return;
 }
 
+void CBmpObj::CreateBitmap(LPBITMAPINFO lpBmi, DWORD dwHeaderSize)
+{
+	LPVOID lp_void;
+
+	this->ReleaseBitmap();
+
+	this->hBitmap = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
+
+	hMemBmpInfo = GlobalAlloc(GMEM_FIXED, dwHeaderSize);
+	this->lpBmpInfo = (LPBITMAPINFO)GlobalLock(hMemBmpInfo);
+
+	memcpy(this->lpBmpInfo, lpBmi, dwHeaderSize);
+
+	return;
+}
+
 //--------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------
 int CBmpObj::ReadHeader(LPTSTR szFileName)
@@ -185,8 +201,9 @@ int CBmpObj::ReadHeader(LPTSTR szFileName)
 	int ret=0;
     HANDLE hFile = NULL;
     DWORD dwResult;
-    LPBITMAPFILEHEADER lpBfh;
-    LPBITMAPINFOHEADER lpBih;
+
+	BITMAPINFOHEADER bih;
+	DWORD dwBmpInfoSize;
 
     hFile = CreateFile(szFileName, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
@@ -194,29 +211,29 @@ int CBmpObj::ReadHeader(LPTSTR szFileName)
 		goto RETURN;
     }
 
-	lpBfh = (LPBITMAPFILEHEADER)(&this->bmpFileHeader);
-    ReadFile(hFile, (LPBITMAPFILEHEADER)lpBfh, sizeof(BITMAPFILEHEADER), &dwResult, NULL);
+    ReadFile(hFile, (LPBITMAPFILEHEADER)(&this->bmpFileHeader), sizeof(BITMAPFILEHEADER), &dwResult, NULL);
 
-	if ( !(LOBYTE(lpBfh->bfType) == 'B' && HIBYTE(lpBfh->bfType) == 'M') ) {
+	if ( this->bmpFileHeader.bfType != 0x4D42 ) { // 0x4D42 -> 'BM'
         ret= -2;
 		goto RETURN;
     }
 
-	lpBih = (LPBITMAPINFOHEADER)(&this->bmpInfoHeader);
-    ReadFile(hFile, (LPBITMAPINFOHEADER)lpBih, sizeof(BITMAPINFOHEADER), &dwResult, NULL);
+    ReadFile(hFile, &bih, sizeof(BITMAPINFOHEADER), &dwResult, NULL);
 
-	if( lpBih->biSize != 40 ) // Windows Bitmapのみ対応
+	if( bih.biSize != 40 ) // Windows Bitmapのみ対応
 	{
         ret= -3;
 		goto RETURN;
 	}
 
-    // RGBQUADデータ用バッファ確保＆読み込み
-	hMemRgbQuad = GlobalAlloc(GMEM_FIXED, lpBih->biClrUsed * sizeof(RGBQUAD));
-	lpRgbQuad = (LPRGBQUAD)GlobalLock(hMemRgbQuad);
+	dwBmpInfoSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*bih.biClrUsed;
+	hMemBmpInfo = GlobalAlloc(GMEM_FIXED, dwBmpInfoSize);
+	this->lpBmpInfo = (LPBITMAPINFO)GlobalLock(hMemBmpInfo);
+
+	this->lpBmpInfo->bmiHeader = bih;
 
 	SetFilePointer(hFile, sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER), 0, FILE_BEGIN);
-    ReadFile(hFile, lpRgbQuad, lpBih->biClrUsed * sizeof(RGBQUAD), &dwResult, NULL);
+	ReadFile(hFile, this->lpBmpInfo->bmiColors, bih.biClrUsed * sizeof(RGBQUAD), &dwResult, NULL);
 
 RETURN:
 	if( hFile != NULL )
@@ -243,7 +260,7 @@ HPALETTE CBmpObj::SetPalette(void)
 		return NULL;
 	}
 
-	lpBih = &this->bmpInfoHeader;
+	lpBih = &this->lpBmpInfo->bmiHeader;
 
 	if( lpBih->biClrUsed == 0 || lpBih->biBitCount > 8 )
 	{
@@ -256,7 +273,7 @@ HPALETTE CBmpObj::SetPalette(void)
     lpPal->palVersion = 0x300;
     lpPal->palNumEntries = (WORD)lpBih->biClrUsed;
 
-    lpRGB = this->lpRgbQuad;
+	lpRGB = this->lpBmpInfo->bmiColors;
 
     for (i = 0; i < lpBih->biClrUsed; i++, lpRGB++) { // 構造体内の色の並び順が異なるため、単なるコピーではNG、、、
         lpPal->palPalEntry[i].peRed   = lpRGB->rgbRed;
@@ -289,29 +306,12 @@ int CBmpObj::ReleaseBitmap( void )
 		hPalette = NULL;
 	}
 
-	if( hMemRgbQuad != NULL )
+	if( hMemBmpInfo != NULL )
 	{
-	    GlobalUnlock(hMemRgbQuad);
-		GlobalFree(hMemRgbQuad);
-		hMemRgbQuad = NULL;
+	    GlobalUnlock(hMemBmpInfo);
+		GlobalFree(hMemBmpInfo);
+		hMemBmpInfo = NULL;
 	}
 
 	return 0;
-}
-
-//--------------------------------------------------------------------------------
-// bmpファイルのヘッダ部を除いたファイルサイズ(単位:byte)を返す
-// bmpのファイルフォーマット仕様に完全に沿っているわけではない(と思う)ので注意
-//--------------------------------------------------------------------------------
-DWORD CBmpObj::SizeImage( BITMAPINFOHEADER bih )
-{
-	DWORD sizeImage;
-
-	if( bih.biSizeImage != 0 ){
-		sizeImage = bih.biSizeImage;
-	}else{
-		sizeImage = (bih.biHeight * bih.biWidth * bih.biBitCount)/8;
-	}
-
-	return sizeImage;
 }
