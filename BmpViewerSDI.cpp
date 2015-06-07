@@ -22,6 +22,8 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// メイン ウィンドウ クラス名
 
 CBmpObj cBmpObj[BUFFER_SIZE];
 int bufIndex=0;
+double scale=1.0;
+double scale_step=0.0001;
 
 TCHAR				szFileName[MAX_PATH];
 POINTS				prevPoint, Point;
@@ -258,7 +260,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			// バッファ上で描画（背景は白固定）
 			ret = FillRect(hdcMem2,&rt,(HBRUSH)GetStockObject(WHITE_BRUSH));
-			ret = BitBlt (hdcMem2, topleftPoint.x, topleftPoint.y, bm.bmWidth, bm.bmHeight, hdcMem,  0, 0, SRCCOPY);
+			if( scale == 1.0 )
+			{
+				ret = BitBlt (hdcMem2, topleftPoint.x, topleftPoint.y, bm.bmWidth, bm.bmHeight, hdcMem,  0, 0, SRCCOPY);
+			}
+			else
+			{
+				ret = StretchBlt (hdcMem2, topleftPoint.x, topleftPoint.y, (int)(bm.bmWidth*scale), (int)(bm.bmHeight*scale), hdcMem,  0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+			}
 
 			// 転送
 			ret = BitBlt (hdc, 0, 0, rt.right, rt.bottom, hdcMem2,  0, 0, SRCCOPY);
@@ -433,6 +442,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			InvalidateRect(hWnd, &rt, FALSE);
 		}
 		 
+		break;
+	case WM_MOUSEWHEEL:
+		{
+			int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+			scale += scale_step * (double)delta;
+
+			RECT rt;
+
+			GetClientRect(hWnd, &rt);
+			InvalidateRect(hWnd, &rt, FALSE);
+		}
+
 		break;
 
 #if 0
