@@ -178,6 +178,8 @@ RETURN:
 	return;
 }
 
+//--------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
 void CBmpObj::CreateBitmap(LPBITMAPINFO lpBmi, DWORD dwHeaderSize)
 {
 	LPVOID lp_void;
@@ -224,6 +226,11 @@ int CBmpObj::ReadHeader(LPTSTR szFileName)
 	{
         ret= -3;
 		goto RETURN;
+	}
+
+	if( bih.biClrUsed == 0 && bih.biBitCount < 16 )
+	{
+		bih.biClrUsed = 2 << bih.biBitCount;
 	}
 
 	dwBmpInfoSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*bih.biClrUsed;

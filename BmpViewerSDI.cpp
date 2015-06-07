@@ -13,18 +13,15 @@
 #define     DELOBJ(p)  { if (p) { DeleteObject(p); (p)=NULL; } }
 
 #define MAX_LOADSTRING 100
-
+#define BUFFER_SIZE    4
 
 // グローバル変数 :
 HINSTANCE hInst;								// 現在のインターフェイス
 TCHAR szTitle[MAX_LOADSTRING];					// タイトル バーのテキスト
 TCHAR szWindowClass[MAX_LOADSTRING];			// メイン ウィンドウ クラス名
 
-CBmpObj cbo;
-CBmpObj cboRot;
-
-CBmpObj cbmpObj[4];
-
+CBmpObj cBmpObj[BUFFER_SIZE];
+int bufIndex=0;
 
 TCHAR				szFileName[MAX_PATH];
 POINTS				prevPoint, Point;
@@ -39,8 +36,6 @@ HBITMAP				hBitmapCurrent = NULL;
 HBITMAP             hBackBitmap    = NULL;
 HDC                 hdcMem         = NULL;
 HDC                 hdcMem2        = NULL;
-
-int                 first_rotate = TRUE;
 
 
 // このコード モジュールに含まれる関数の宣言を転送します :
@@ -172,7 +167,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	PAINTSTRUCT ps;
 	HDC hdc;
 	static OPENFILENAME	Ofn;
-	static int bOpenFile = FALSE;
 	static int bDragging = FALSE;
 
 	switch (message) 
@@ -198,8 +192,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				topleftPoint.y = 0;
 
 				DELOBJ(hBitmapRot);
-				first_rotate = TRUE;
-				bOpenFile = TRUE;
 
 #if 1
 				TCHAR			szDefaultDir[MAX_PATH];
@@ -216,12 +208,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				wsprintf(szFileName, _T("F:\\work\\Program\\Prog\\BmpViewerSDI\\3692796\.bmp"));
 #endif
 
-				cbo.LoadBitmapFromFile(szFileName);
+//				cbo.LoadBitmapFromFile(szFileName);
 
+				cBmpObj[0].LoadBitmapFromFile(szFileName);
+
+				for(int i=1;i<BUFFER_SIZE; i++)
+				{
+					cBmpObj[i].ReleaseBitmap();
+				}
+
+#if 0
 				if( cbo.GetBitmapHandle() != NULL )
 				{
 					SelectObject( hdcMem, cbo.GetBitmapHandle() );
 					hBitmapCurrent = cbo.GetBitmapHandle();
+				}
+#endif
+
+				if( (hBitmapCurrent = cBmpObj[0].GetBitmapHandle()) != NULL )
+				{
+					SelectObject( hdcMem, hBitmapCurrent );
+					bufIndex = 0;
 				}
 
 				{
@@ -239,11 +246,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_PAINT:
 		hdc = BeginPaint(hWnd, &ps);
 		// TODO: 描画コードをここに追加してください...
-		if( !bOpenFile )
-		{
-			break;
-		}
-
 		if(hBitmapCurrent != NULL)
 		{
 			BITMAP bm;
@@ -272,69 +274,66 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		bDragging = FALSE;
 		break;
 	case WM_RBUTTONUP:
-		if(cbo.GetBitmapHandle() != NULL)
+		if(hBitmapCurrent != NULL)
 		{
-			LPVOID lp_void;
-			LPBYTE lpSrc, lpDst;
-			BITMAP bmSrc, bmDst;
 			RECT rt;
 			int x,y;
-			HDC hdc;
+			int nextBufIndex;
 
-			HANDLE hMem;
-			DWORD  dwHeaderSize;
-			LPBITMAPINFO lpBmi;
-
-			hdc = GetDC(hWnd);
-
-			int srcBitPos, srcBitBytePos, srcBitByteBitPos;
-			int dstBitPos, dstBitBytePos, dstBitByteBitPos;
-			int srcBit;
-			LPBYTE writeBytePtr;
-
-			if(first_rotate==TRUE)
 			{
-				GetObject(cbo.GetBitmapHandle(), sizeof(BITMAP), &bmSrc);
+				LPBYTE lpSrc, lpDst;
+				BITMAP bmSrc, bmDst;
+
+				HANDLE hMem;
+				DWORD  dwHeaderSize;
+				LPBITMAPINFO lpBmi;
+
+				int srcBitPos, srcBitBytePos, srcBitByteBitPos;
+				int dstBitPos, dstBitBytePos, dstBitByteBitPos;
+				int srcBit;
+				LPBYTE writeBytePtr;
+
+				nextBufIndex = (bufIndex+1)%BUFFER_SIZE;
+
+				hdc = GetDC(hWnd);
+
+				GetObject(cBmpObj[bufIndex].GetBitmapHandle(), sizeof(BITMAP), &bmSrc);
 				lpSrc = (LPBYTE)bmSrc.bmBits;
 
-				// 左90度回転した画像用のBITMAP生成
+				// 変換画像用のBITMAP生成
 				{
-					dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed;
-					hMem = GlobalAlloc(GHND, dwHeaderSize);
+					dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed;
+					hMem = GlobalAlloc(GMEM_FIXED, dwHeaderSize);
 					lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
 
 					ZeroMemory(lpBmi, dwHeaderSize);
 
-					lpBmi->bmiHeader = cbo.GetBitmapInfoHeader();
+					lpBmi->bmiHeader = cBmpObj[bufIndex].GetBitmapInfoHeader();
 
 					// 縦横入れ替え
 					lpBmi->bmiHeader.biWidth     = bmSrc.bmHeight;
 					lpBmi->bmiHeader.biHeight    = bmSrc.bmWidth;
 
-					memcpy(lpBmi->bmiColors, cbo.GetRgbQuadData(), sizeof(RGBQUAD)*cbo.GetBitmapInfoHeader().biClrUsed);
+					memcpy(lpBmi->bmiColors, cBmpObj[bufIndex].GetRgbQuadData(), sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed);
 
 #if 0
-					if( cbo.hPalette != NULL )
+					HDC hdc;
+
+					if( cBmpObj[0].hPalette != NULL )
 					{
-						SelectPalette(hdc, cbo.hPalette, FALSE);
+						SelectPalette(hdc, cBmpObj[0].hPalette, FALSE);
 						RealizePalette(hdc);
 					}
+					ReleaseDC(hWnd, hdc);
 #endif
 
-					cboRot.CreateBitmap(lpBmi, dwHeaderSize);
-
-//					hBitmapRot = CreateDIBSection(hdc, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
-//					hBitmapRot = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
-//					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
-//					hBitmapRot = CreateDIBSection(hdc, (LPBITMAPINFO)&bmi, DIB_PAL_COLORS, &lp_void, NULL, 0);
+					cBmpObj[nextBufIndex].CreateBitmap(lpBmi, dwHeaderSize);
 
 					GlobalUnlock(hMem);
 					GlobalFree(hMem);
 				}
 
-//				GetObject(hBitmapRot, sizeof(BITMAP), &bmDst);
-//				lpDst = (LPBYTE)lp_void;
-				GetObject(cboRot.GetBitmapHandle(), sizeof(BITMAP), &bmDst);
+				GetObject(cBmpObj[nextBufIndex].GetBitmapHandle(), sizeof(BITMAP), &bmDst);
 				lpDst = (LPBYTE)bmDst.bmBits;
 
 				switch ( bmDst.bmBitsPixel )
@@ -347,7 +346,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					{
 						for(x=0;x<bmSrc.bmWidth;x++)
 						{
-							srcBitPos        = bmSrc.bmWidthBytes*8*y+x;
+							srcBitPos        = bmSrc.bmWidthBytes*8*y + x; // この時点では同一バイト内で上位下位が逆。srcBitByteBitPosで変換する
 							srcBitBytePos    = srcBitPos / 8;
 							srcBitByteBitPos = 7-(srcBitPos % 8);
 							srcBit = ( (*(lpSrc+srcBitBytePos)) >> srcBitByteBitPos ) & 0x1;
@@ -357,7 +356,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							dstBitByteBitPos = 7-(dstBitPos % 8);
 
 							writeBytePtr = lpDst + dstBitBytePos;
-
 							*writeBytePtr |= srcBit << dstBitByteBitPos;
 						}
 					}
@@ -373,21 +371,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					{
 						for(x=0;x<bmSrc.bmWidth;x++)
 						{
-							memcpy(lpDst+((bmSrc.bmHeight *x + bmSrc.bmHeight-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
+							memcpy(lpDst+(bmDst.bmWidthBytes*x + (bmDst.bmWidth-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
 						}
 					}
 					break;
 				default:
 					break;
 				}
-
-				first_rotate = FALSE;
 			}
 
-			hBitmapCurrent = (hBitmapCurrent == cbo.GetBitmapHandle())?cboRot.GetBitmapHandle():cbo.GetBitmapHandle();
+			hBitmapCurrent = cBmpObj[nextBufIndex].GetBitmapHandle();
+			bufIndex = nextBufIndex;
 			SelectObject( hdcMem, hBitmapCurrent );
-
-			ReleaseDC(hWnd, hdc);
 
 			GetClientRect(hWnd, &rt);
 			InvalidateRect(hWnd, &rt, FALSE);
@@ -397,7 +392,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if( bDragging )
 		{
 #if 1
-			if(cbo.GetBitmapHandle() != NULL)
+			if(hBitmapCurrent != NULL)
 			{
 				Point = MAKEPOINTS(lParam);
 
