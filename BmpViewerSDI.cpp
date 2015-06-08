@@ -210,27 +210,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				wsprintf(szFileName, _T("F:\\work\\Program\\Prog\\BmpViewerSDI\\3692796\.bmp"));
 #endif
 
-//				cbo.LoadBitmapFromFile(szFileName);
-
 				cBmpObj[0].LoadBitmapFromFile(szFileName);
+				bufIndex = 0;
 
 				for(int i=1;i<BUFFER_SIZE; i++)
 				{
 					cBmpObj[i].ReleaseBitmap();
 				}
 
-#if 0
-				if( cbo.GetBitmapHandle() != NULL )
-				{
-					SelectObject( hdcMem, cbo.GetBitmapHandle() );
-					hBitmapCurrent = cbo.GetBitmapHandle();
-				}
-#endif
-
 				if( (hBitmapCurrent = cBmpObj[0].GetBitmapHandle()) != NULL )
 				{
 					SelectObject( hdcMem, hBitmapCurrent );
-					bufIndex = 0;
 				}
 
 				{
@@ -269,7 +259,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				ret = StretchBlt (hdcMem2, topleftPoint.x, topleftPoint.y, (int)(bm.bmWidth*scale), (int)(bm.bmHeight*scale), hdcMem,  0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
 			}
 
-			// ì]ëó
 			ret = BitBlt (hdc, 0, 0, rt.right, rt.bottom, hdcMem2,  0, 0, SRCCOPY);
 		}
 
@@ -285,116 +274,61 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_RBUTTONUP:
 		if(hBitmapCurrent != NULL)
 		{
-			RECT rt;
-			int x,y;
 			int nextBufIndex;
 
-			{
-				LPBYTE lpSrc, lpDst;
-				BITMAP bmSrc, bmDst;
+			nextBufIndex = (bufIndex+1)%BUFFER_SIZE;
 
+			// ïœä∑âÊëúópÇÃBITMAPê∂ê¨
+			{
+				BITMAP bmSrc;
 				HANDLE hMem;
 				DWORD  dwHeaderSize;
 				LPBITMAPINFO lpBmi;
 
-				int srcBitPos, srcBitBytePos, srcBitByteBitPos;
-				int dstBitPos, dstBitBytePos, dstBitByteBitPos;
-				int srcBit;
-				LPBYTE writeBytePtr;
+				dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed;
+				hMem = GlobalAlloc(GMEM_FIXED, dwHeaderSize);
+				lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
+				ZeroMemory(lpBmi, dwHeaderSize);
 
-				nextBufIndex = (bufIndex+1)%BUFFER_SIZE;
-
-				hdc = GetDC(hWnd);
+				lpBmi->bmiHeader = cBmpObj[bufIndex].GetBitmapInfoHeader();
 
 				GetObject(cBmpObj[bufIndex].GetBitmapHandle(), sizeof(BITMAP), &bmSrc);
-				lpSrc = (LPBYTE)bmSrc.bmBits;
 
-				// ïœä∑âÊëúópÇÃBITMAPê∂ê¨
-				{
-					dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed;
-					hMem = GlobalAlloc(GMEM_FIXED, dwHeaderSize);
-					lpBmi = (LPBITMAPINFO)GlobalLock(hMem);
+				// ècâ°ì¸ÇÍë÷Ç¶
+				lpBmi->bmiHeader.biWidth     = bmSrc.bmHeight;
+				lpBmi->bmiHeader.biHeight    = bmSrc.bmWidth;
 
-					ZeroMemory(lpBmi, dwHeaderSize);
-
-					lpBmi->bmiHeader = cBmpObj[bufIndex].GetBitmapInfoHeader();
-
-					// ècâ°ì¸ÇÍë÷Ç¶
-					lpBmi->bmiHeader.biWidth     = bmSrc.bmHeight;
-					lpBmi->bmiHeader.biHeight    = bmSrc.bmWidth;
-
-					memcpy(lpBmi->bmiColors, cBmpObj[bufIndex].GetRgbQuadData(), sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed);
+				memcpy(lpBmi->bmiColors, cBmpObj[bufIndex].GetRgbQuadData(), sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed);
 
 #if 0
-					HDC hdc;
+				HDC hdc;
 
-					if( cBmpObj[0].hPalette != NULL )
-					{
-						SelectPalette(hdc, cBmpObj[0].hPalette, FALSE);
-						RealizePalette(hdc);
-					}
-					ReleaseDC(hWnd, hdc);
+				if( cBmpObj[0].hPalette != NULL )
+				{
+					SelectPalette(hdc, cBmpObj[0].hPalette, FALSE);
+					RealizePalette(hdc);
+				}
+				ReleaseDC(hWnd, hdc);
 #endif
 
-					cBmpObj[nextBufIndex].CreateBitmap(lpBmi, dwHeaderSize);
+				cBmpObj[nextBufIndex].CreateBitmap(lpBmi);
 
-					GlobalUnlock(hMem);
-					GlobalFree(hMem);
-				}
-
-				GetObject(cBmpObj[nextBufIndex].GetBitmapHandle(), sizeof(BITMAP), &bmDst);
-				lpDst = (LPBYTE)bmDst.bmBits;
-
-				switch ( bmDst.bmBitsPixel )
-				{
-				case 1:
-					ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
-					
-					// ç∂90ìxâÒì]ïœä∑
-					for(y=0;y<bmSrc.bmHeight;y++)
-					{
-						for(x=0;x<bmSrc.bmWidth;x++)
-						{
-							srcBitPos        = bmSrc.bmWidthBytes*8*y + x; // Ç±ÇÃéûì_Ç≈ÇÕìØàÍÉoÉCÉgì‡Ç≈è„à â∫à Ç™ãtÅBsrcBitByteBitPosÇ≈ïœä∑Ç∑ÇÈ
-							srcBitBytePos    = srcBitPos / 8;
-							srcBitByteBitPos = 7-(srcBitPos % 8);
-							srcBit = ( (*(lpSrc+srcBitBytePos)) >> srcBitByteBitPos ) & 0x1;
-
-							dstBitPos        = bmDst.bmWidthBytes*8*x + bmDst.bmWidth-1-y;
-							dstBitBytePos    = dstBitPos / 8;
-							dstBitByteBitPos = 7-(dstBitPos % 8);
-
-							writeBytePtr = lpDst + dstBitBytePos;
-							*writeBytePtr |= srcBit << dstBitByteBitPos;
-						}
-					}
-					break;
-
-				case 4:
-				case 8:
-					break;
-
-				case 24:
-				case 32:
-					for(y=0;y<bmSrc.bmHeight;y++)
-					{
-						for(x=0;x<bmSrc.bmWidth;x++)
-						{
-							memcpy(lpDst+(bmDst.bmWidthBytes*x + (bmDst.bmWidth-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
-						}
-					}
-					break;
-				default:
-					break;
-				}
+				GlobalUnlock(hMem);
+				GlobalFree(hMem);
 			}
+
+			// ç∂90ìxâÒì]
+			cBmpObj[bufIndex].RotateLeftRightAngle(cBmpObj[nextBufIndex].GetBitmapHandle());
 
 			hBitmapCurrent = cBmpObj[nextBufIndex].GetBitmapHandle();
 			bufIndex = nextBufIndex;
 			SelectObject( hdcMem, hBitmapCurrent );
 
-			GetClientRect(hWnd, &rt);
-			InvalidateRect(hWnd, &rt, FALSE);
+			{
+				RECT rt;
+				GetClientRect(hWnd, &rt);
+				InvalidateRect(hWnd, &rt, FALSE);
+			}
 		}
 		break;
 	case WM_MOUSEMOVE:

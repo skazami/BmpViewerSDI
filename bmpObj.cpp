@@ -180,14 +180,26 @@ RETURN:
 
 //--------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------
-void CBmpObj::CreateBitmap(LPBITMAPINFO lpBmi, DWORD dwHeaderSize)
+void CBmpObj::CreateBitmap(LPBITMAPINFO lpBmi)
 {
 	LPVOID lp_void;
+	DWORD dwHeaderSize;
+	DWORD dwClrUsed;
 
 	this->ReleaseBitmap();
 
 	this->hBitmap = CreateDIBSection(NULL, lpBmi, DIB_RGB_COLORS, &lp_void, NULL, 0);
 
+	if( lpBmi->bmiHeader.biClrUsed == 0 && lpBmi->bmiHeader.biBitCount < 16 )
+	{
+		dwClrUsed = 2 << lpBmi->bmiHeader.biBitCount;
+	}
+	else
+	{
+		dwClrUsed = lpBmi->bmiHeader.biClrUsed;
+	}
+
+	dwHeaderSize = sizeof(BITMAPINFOHEADER)+ sizeof(RGBQUAD)*dwClrUsed;
 	hMemBmpInfo = GlobalAlloc(GMEM_FIXED, dwHeaderSize);
 	this->lpBmpInfo = (LPBITMAPINFO)GlobalLock(hMemBmpInfo);
 
@@ -318,6 +330,82 @@ int CBmpObj::ReleaseBitmap( void )
 	    GlobalUnlock(hMemBmpInfo);
 		GlobalFree(hMemBmpInfo);
 		hMemBmpInfo = NULL;
+	}
+
+	return 0;
+}
+
+
+//--------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+int CBmpObj::RotateLeftRightAngle(HBITMAP hBitmapDst)
+{
+	int x,y;
+	LPBYTE lpSrc, lpDst;
+	BITMAP bmSrc, bmDst;
+
+	int srcBitPos, srcBitBytePos, srcBitByteBitPos;
+	int dstBitPos, dstBitBytePos, dstBitByteBitPos;
+	int srcBit;
+	LPBYTE writeBytePtr;
+
+	if( this->hBitmap == NULL )
+	{
+		return -1;
+	}
+	
+	if( hBitmapDst == NULL )
+	{
+		return -2;
+	}
+
+	GetObject(this->hBitmap, sizeof(BITMAP), &bmSrc);
+	lpSrc = (LPBYTE)bmSrc.bmBits;
+
+	GetObject(hBitmapDst, sizeof(BITMAP), &bmDst);
+	lpDst = (LPBYTE)bmDst.bmBits;
+
+	switch ( bmDst.bmBitsPixel )
+	{
+	case 1:
+		ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
+					
+		for(y=0;y<bmSrc.bmHeight;y++)
+		{
+			for(x=0;x<bmSrc.bmWidth;x++)
+			{
+				srcBitPos        = bmSrc.bmWidthBytes*8*y + x; // この時点では同一バイト内で上位下位が逆。srcBitByteBitPosで変換する
+				srcBitBytePos    = srcBitPos / 8;
+				srcBitByteBitPos = 7-(srcBitPos % 8);
+				srcBit = ( (*(lpSrc+srcBitBytePos)) >> srcBitByteBitPos ) & 0x1;
+
+				dstBitPos        = bmDst.bmWidthBytes*8*x + bmDst.bmWidth-1-y;
+				dstBitBytePos    = dstBitPos / 8;
+				dstBitByteBitPos = 7-(dstBitPos % 8);
+
+				writeBytePtr = lpDst + dstBitBytePos;
+				*writeBytePtr |= srcBit << dstBitByteBitPos;
+			}
+		}
+		break;
+
+	case 4:
+	case 8:
+		// TODO implement transform formula
+		break;
+
+	case 24:
+	case 32:
+		for(y=0;y<bmSrc.bmHeight;y++)
+		{
+			for(x=0;x<bmSrc.bmWidth;x++)
+			{
+				memcpy(lpDst+(bmDst.bmWidthBytes*x + (bmDst.bmWidth-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
+			}
+		}
+		break;
+	default:
+		break;
 	}
 
 	return 0;

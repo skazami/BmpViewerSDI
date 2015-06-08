@@ -25,12 +25,12 @@ public:
 	CBmpObj();
 	virtual ~CBmpObj();
 
-	void DesktopToFile( void );
+	// Bitmap生成・解放関連
 	void LoadBitmapFromFile( LPTSTR );
-	void CreateBitmap( LPBITMAPINFO, DWORD ); // TODO implement this method
+	void CreateBitmap( LPBITMAPINFO );
+	int  ReleaseBitmap( void );
 
-	int ReleaseBitmap( void );
-
+	// Bitmap管理用
 	HBITMAP GetBitmapHandle( void )
 	{
 		return this->hBitmap;
@@ -60,6 +60,15 @@ public:
 	{
 		return this->lpBmpInfo->bmiColors; // TODO （メモリ使用量的には不利になるが）できればコピーを渡したほうが良い。元のデータを保護するため。
 	}
+
+
+	// Bitmap変換
+	int RotateLeftRightAngle(HBITMAP);
+
+
+	// その他の機能
+	void DesktopToFile( void );
+
 };
 
 #endif // __BMPOBJ_H__
