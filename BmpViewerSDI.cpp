@@ -382,10 +382,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			int delta = GET_WHEEL_DELTA_WPARAM(wParam);
 			scale += scale_step * (double)delta;
 
-			RECT rt;
+			{
+				RECT rt;
 
-			GetClientRect(hWnd, &rt);
-			InvalidateRect(hWnd, &rt, FALSE);
+				GetClientRect(hWnd, &rt);
+				InvalidateRect(hWnd, &rt, FALSE);
+			}
 		}
 
 		break;
