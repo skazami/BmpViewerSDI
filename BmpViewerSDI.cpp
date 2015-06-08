@@ -334,7 +334,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_MOUSEMOVE:
 		if( bDragging )
 		{
-#if 1
 			if(hBitmapCurrent != NULL)
 			{
 				Point = MAKEPOINTS(lParam);
@@ -360,7 +359,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 
 			}
-#endif
 
 			prevPoint = Point;
 		}
