@@ -5,6 +5,7 @@
 #include "BmpViewerSDI.h"
 
 #include <stdio.h>
+#include <math.h>
 #include <commctrl.h>
 #include <commdlg.h>
 
@@ -23,6 +24,7 @@ TCHAR szWindowClass[MAX_LOADSTRING];			// メイン ウィンドウ クラス名
 CBmpObj cBmpObj[BUFFER_SIZE];
 int bufIndex=0;
 double scale=1.0;
+double scale_x = 0.0;
 double scale_step=0.0001;
 
 TCHAR				szFileName[MAX_PATH];
@@ -223,6 +225,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					SelectObject( hdcMem, hBitmapCurrent );
 				}
 
+				scale = 1.0;
+				scale_x = 0.0;
+
 				{
 					RECT rt;
 
@@ -371,6 +376,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		topleftPoint.y = 0;
 
 		scale = 1.0;
+		scale_x = 0.0;
 
 		{
 			RECT rt;
@@ -383,7 +389,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_MOUSEWHEEL:
 		{
 			int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-			scale += scale_step * (double)delta;
+			scale_x += scale_step * (double)delta;
+			scale = pow(2, scale_x);
 
 			{
 				RECT rt;
