@@ -298,6 +298,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				lpBmi->bmiHeader.biWidth     = bmSrc.bmHeight;
 				lpBmi->bmiHeader.biHeight    = bmSrc.bmWidth;
 
+				// カラーパレットコピー
 				memcpy(lpBmi->bmiColors, cBmpObj[bufIndex].GetRgbQuadData(), sizeof(RGBQUAD)*cBmpObj[bufIndex].GetBitmapInfoHeader().biClrUsed);
 
 #if 0
@@ -365,7 +366,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_LBUTTONDBLCLK:
-		topleftPoint = MAKEPOINTS(lParam);
+		//topleftPoint = MAKEPOINTS(lParam);
+		topleftPoint.x = 0;
+		topleftPoint.y = 0;
+
+		scale = 1.0;
 
 		{
 			RECT rt;

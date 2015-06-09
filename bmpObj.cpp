@@ -204,8 +204,9 @@ int CBmpObj::RotateLeftRightAngle(HBITMAP hBitmapDst)
 	LPBYTE lpSrc, lpDst;
 	BITMAP bmSrc, bmDst;
 
-	int srcBitPos, srcBitBytePos, srcBitByteBitPos;
-	int dstBitPos, dstBitBytePos, dstBitByteBitPos;
+	int pixelByteNum;
+	int srcPixelPos, srcPixelBytePos, srcPixelByteBitPos;
+	int dstPixelPos, dstPixelBytePos, dstPixelByteBitPos;
 	int srcBit;
 	LPBYTE writeBytePtr;
 
@@ -225,42 +226,67 @@ int CBmpObj::RotateLeftRightAngle(HBITMAP hBitmapDst)
 	GetObject(hBitmapDst, sizeof(BITMAP), &bmDst);
 	lpDst = (LPBYTE)bmDst.bmBits;
 
+	if( !((bmSrc.bmWidth == bmDst.bmHeight)
+		  && (bmSrc.bmHeight == bmDst.bmWidth)
+		  && (bmSrc.bmBitsPixel == bmDst.bmBitsPixel)) )
+	{
+		return -3;
+	}
+
+	pixelByteNum = bmDst.bmBitsPixel/8;
+
+	ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
+
 	switch ( bmDst.bmBitsPixel )
 	{
 	case 1:
-		ZeroMemory(lpDst, bmDst.bmWidthBytes*bmDst.bmHeight);
-					
 		for(y=0;y<bmSrc.bmHeight;y++)
 		{
 			for(x=0;x<bmSrc.bmWidth;x++)
 			{
-				srcBitPos        = bmSrc.bmWidthBytes*8*y + x; // この時点では同一バイト内で上位下位が逆。srcBitByteBitPosで変換する
-				srcBitBytePos    = srcBitPos / 8;
-				srcBitByteBitPos = 7-(srcBitPos % 8);
-				srcBit = ( (*(lpSrc+srcBitBytePos)) >> srcBitByteBitPos ) & 0x1;
+				srcPixelPos        = bmSrc.bmWidthBytes*8*y + x; // この時点では同一バイト内で上位下位が逆。srcPixelByteBitPosで変換する
+				srcPixelBytePos    = srcPixelPos / 8;
+				srcPixelByteBitPos = 7-(srcPixelPos % 8);
+				srcBit = ( (*(lpSrc+srcPixelBytePos)) >> srcPixelByteBitPos ) & 0x1;
 
-				dstBitPos        = bmDst.bmWidthBytes*8*x + bmDst.bmWidth-1-y;
-				dstBitBytePos    = dstBitPos / 8;
-				dstBitByteBitPos = 7-(dstBitPos % 8);
+				dstPixelPos        = bmDst.bmWidthBytes*8*x + bmDst.bmWidth-1-y;
+				dstPixelBytePos    = dstPixelPos / 8;
+				dstPixelByteBitPos = 7-(dstPixelPos % 8);
 
-				writeBytePtr = lpDst + dstBitBytePos;
-				*writeBytePtr |= srcBit << dstBitByteBitPos;
+				writeBytePtr = lpDst + dstPixelBytePos;
+				*writeBytePtr |= srcBit << dstPixelByteBitPos;
 			}
 		}
 		break;
 
 	case 4:
-	case 8:
-		// TODO implement transform formula
-		break;
+		for(y=0;y<bmSrc.bmHeight;y++)
+		{
+			for(x=0;x<bmSrc.bmWidth;x++)
+			{
+				srcPixelPos        = bmSrc.bmWidthBytes*8*y + 4*x; // この時点では同一バイト内で上位下位が逆。srcBitByteBitPosで変換する
+				srcPixelBytePos    = srcPixelPos / 8;
+				srcPixelByteBitPos = 4-(srcPixelPos % 8);
+				srcBit = ( (*(lpSrc+srcPixelBytePos)) >> srcPixelByteBitPos ) & 0xF;
 
+				dstPixelPos        = bmDst.bmWidthBytes*8*x + 4*(bmDst.bmWidth-1-y);
+				dstPixelBytePos    = dstPixelPos / 8;
+				dstPixelByteBitPos = 4-(dstPixelPos % 8);
+
+				writeBytePtr = lpDst + dstPixelBytePos;
+				*writeBytePtr |= srcBit << dstPixelByteBitPos;
+			}
+		}
+		break;
+	case 8:
+	case 16:
 	case 24:
 	case 32:
 		for(y=0;y<bmSrc.bmHeight;y++)
 		{
 			for(x=0;x<bmSrc.bmWidth;x++)
 			{
-				memcpy(lpDst+(bmDst.bmWidthBytes*x + (bmDst.bmWidth-1-y)*3),lpSrc+ bmSrc.bmWidthBytes*y + x*3,3);
+				memcpy(lpDst+(bmDst.bmWidthBytes*x + pixelByteNum*(bmDst.bmWidth-1-y)),lpSrc+ bmSrc.bmWidthBytes*y + pixelByteNum*x,pixelByteNum);
 			}
 		}
 		break;
